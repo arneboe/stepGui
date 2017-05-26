@@ -1,9 +1,10 @@
 #pragma once
 #include <QtGui/QMainWindow>
-#include <QLineEdit>
+#include <QtGui/QLineEdit>
+#include <QtGui/QProgressBar>
 #include <unordered_map>
 #include <functional>
-#include "../../../engine.hpp"
+#include "../../engine.hpp"
 
 class QSpinBox;
 class QCustomPlot;
@@ -41,6 +42,10 @@ private slots:
 
     /** Is called when user clicks "Send sequence" */
     void sendSeq();
+
+    void loadPreLoad();
+
+    void sendPreLoad();
     
 private:
     
@@ -49,6 +54,8 @@ private:
     
     /**Update @p graph from @p data */
     void setGraphData(QCPGraph* graph, const Trajectory& data);
+
+    void loadFile(QString fileName);
     
     Step step;
     StepSequence seq;
@@ -65,5 +72,7 @@ private:
     QSpinBox* stepLenBox;
     QSpinBox* stepIndex;
     QLineEdit* stepSeqEdit;
+    QLineEdit* preloadPath;
+    QProgressBar* bar;
 };
 

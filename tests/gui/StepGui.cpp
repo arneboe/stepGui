@@ -203,11 +203,40 @@ StepGui::StepGui(std::function<void(const Step&, unsigned short index)> sendCall
 
     QPushButton* stepSequenceSend = new QPushButton("Send sequence",this);
     connect(stepSequenceSend,SIGNAL(pressed()),this,SLOT(sendSeq()));
-    stepSequenceLayout->addWidget(stepSequenceSend,0,0);
+    stepSequenceLayout->addWidget(stepSequenceSend,0,1);
 
     stepSeqEdit = new QLineEdit(this);
-    stepSequenceLayout->addWidget(stepSeqEdit,0,1);
+    stepSequenceLayout->addWidget(stepSeqEdit,0,0);
     stepSeqEdit->setText("0,0,0,0");
+
+    // pre-loader
+    QWidget* preloadHLayoutWidget = new QWidget(this);
+    QHBoxLayout* preloadLayout = new QHBoxLayout(this);
+    preloadHLayoutWidget->setLayout(preloadLayout);
+    stepSequenceLayout->addWidget(preloadHLayoutWidget);
+
+    QLabel* preloadPathLabel = new QLabel("Path",this);
+    preloadLayout->addWidget(preloadPathLabel);
+
+    preloadPath = new QLineEdit(this);
+    preloadLayout->addWidget(preloadPath);
+
+    QPushButton* loadPreload = new QPushButton("Load Preload",this);
+    connect(loadPreload,SIGNAL(pressed()),this,SLOT(loadPreLoad()));
+    stepSequenceLayout->addWidget(loadPreload,1,1);
+
+//    QSpacerItem* hspacer00 = new QSpacerItem(100,100,QSizePolicy::Ignored,QSizePolicy::Ignored);
+//    stepSequenceLayout->addItem(hspacer00,2,0,-1,-1);
+    QPushButton* sendPreload = new QPushButton("Send Preload", this);
+    connect(sendPreload,SIGNAL(pressed()),this,SLOT(sendPreLoad()));
+    stepSequenceLayout->addWidget(sendPreload,2,1);
+
+    QSpacerItem* vspacer00 = new QSpacerItem(100,100,QSizePolicy::Ignored,QSizePolicy::Ignored);
+    stepSequenceLayout->addItem(vspacer00,3,0,-1,-1);
+
+    bar = new QProgressBar(this);
+    stepSequenceLayout->addWidget(bar,4,0,1,3);
+    bar->setVisible(false);
 }
 
 void StepGui::setTrajectorySize(int size)
@@ -274,6 +303,78 @@ void StepGui::setGraphData(QCPGraph* graph, const Trajectory& data)
     graph->setData(x, y);
 }
 
+void StepGui::loadFile(QString fileName)
+{
+    if(fileName.size() <= 0)
+        return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly)) {
+        std::cerr << file.errorString().toStdString() << std::endl;
+        return;
+    }
+
+    QByteArray line = file.readLine();
+    bool stepLenOk = false;
+    const int stepLen = QString(line).toInt(&stepLenOk);
+    if(!stepLenOk)
+    {
+        std::cerr << "steplen parsing failed\n";
+        return;
+    }
+    stepLenBox->setValue(stepLen);
+
+    int trajectoryId = 0;
+    while (!file.atEnd())
+    {
+        QByteArray times = file.readLine();
+        QByteArray angles = file.readLine();
+
+        std::cout << "read times: " << QString(times).toStdString() << std::endl;
+        std::cout << "read angles: " << QString(angles).toStdString() << std::endl;
+
+
+        if(times.length() == 0 || angles.length() == 0)
+        {
+            std::cerr << "error while reading line\n";
+            return;
+        }
+        QList<QByteArray> timeList = times.split(',');
+        QList<QByteArray> angleList = angles.split(',');
+
+        if(timeList.length() != angleList.length() || timeList.length() == 0 || angleList.length() == 0)
+        {
+            std::cerr << "error while reading\n";
+            return;
+        }
+
+        step.servoTrajectory[trajectoryId].size = timeList.size();
+        setTrajectorySize(timeList.size(), servoNames[trajectoryId]);
+
+        for(int i = 0; i < timeList.size(); ++i)
+        {
+            bool timeOk = false;
+            const int time = QString(timeList[i]).toInt(&timeOk);
+            bool angleOk = false;
+            const int angle = QString(angleList[i]).toInt(&angleOk);
+            if(!timeOk || !angleOk)
+            {
+                std::cerr << "parse error\n";
+                return;
+            }
+            step.servoTrajectory[trajectoryId].data[i].time = time;
+            step.servoTrajectory[trajectoryId].data[i].angle = angle;
+        }
+        ++trajectoryId;
+    }
+
+    //tell models that data has changed.
+    //this will cause a cascade of signals and also update all plots etc.
+    for(auto& pair : trajModels)
+    {
+        pair.second->trajectoryUpdated();
+    }
+}
 
 void StepGui::sendStep()
 {
@@ -324,76 +425,7 @@ void StepGui::save()
 void StepGui::load()
 {
     QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"));
-    if(fileName.size() <= 0)
-        return;
-    
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly)) {
-        std::cerr << file.errorString().toStdString() << std::endl;
-        return;
-    }
-    
-    QByteArray line = file.readLine();
-    bool stepLenOk = false;
-    const int stepLen = QString(line).toInt(&stepLenOk);
-    if(!stepLenOk)
-    {
-        std::cerr << "steplen parsing failed\n";
-        return;
-    }
-    stepLenBox->setValue(stepLen);
-    
-    int trajectoryId = 0;
-    while (!file.atEnd()) 
-    {
-        QByteArray times = file.readLine();
-        QByteArray angles = file.readLine();
-        
-        std::cout << "read times: " << QString(times).toStdString() << std::endl;
-        std::cout << "read angles: " << QString(angles).toStdString() << std::endl;
-        
-        
-        if(times.length() == 0 || angles.length() == 0)
-        {
-            std::cerr << "error while reading line\n";
-            return;
-        }
-        QList<QByteArray> timeList = times.split(',');
-        QList<QByteArray> angleList = angles.split(',');
-        
-        if(timeList.length() != angleList.length() || timeList.length() == 0 || angleList.length() == 0)
-        {
-            std::cerr << "error while reading\n";
-            return;           
-        }
-        
-        step.servoTrajectory[trajectoryId].size = timeList.size();
-        setTrajectorySize(timeList.size(), servoNames[trajectoryId]);
-        
-        for(int i = 0; i < timeList.size(); ++i)
-        {
-            bool timeOk = false;
-            const int time = QString(timeList[i]).toInt(&timeOk);
-            bool angleOk = false;
-            const int angle = QString(angleList[i]).toInt(&angleOk);
-            if(!timeOk || !angleOk)
-            {
-                std::cerr << "parse error\n";
-                return;
-            }
-            step.servoTrajectory[trajectoryId].data[i].time = time;
-            step.servoTrajectory[trajectoryId].data[i].angle = angle;
-        }
-        ++trajectoryId;
-    }
-    
-    //tell models that data has changed.
-    //this will cause a cascade of signals and also update all plots etc.
-    for(auto& pair : trajModels)
-    {
-        pair.second->trajectoryUpdated();
-    }
-    
+    loadFile(fileName);
 }
 
 void StepGui::sendSeq()
@@ -410,6 +442,54 @@ void StepGui::sendSeq()
     }
     seq.length = size;
     seqCallback(seq);
+}
+
+void StepGui::loadPreLoad()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"));
+    preloadPath->setText(fileName);
+}
+
+void StepGui::sendPreLoad()
+{
+    int tmp = stepIndex->value();
+    bool ok;
+    QString fileName = preloadPath->text();
+    QFile preloadFile(fileName);
+    if(!preloadFile.exists())return;
+    if(!preloadFile.open(QIODevice::ReadOnly))
+    {
+        std::cerr << "Could not open file\n";
+    }
+    QString li = preloadFile.readLine();
+    int lines = li.toInt(&ok);
+    qDebug(li.toStdString().c_str());
+    if(!ok)
+    {
+        std::cerr << "size parsing failed\n";
+        return;
+    }
+    if(lines < 1)return;
+    bar->setMaximum(lines);
+    bar->setValue(0);
+    QString line;
+    bar->setVisible(true);
+    while(!preloadFile.atEnd())
+    {
+        line = preloadFile.readLine();
+        if(line.startsWith('#'))continue;
+        int index = line.split(",").at(0).toInt(&ok);
+        if(ok)
+        {
+            stepIndex->setValue(index);
+            QString stepFile = line.split(",").at(1).trimmed();
+            loadFile(stepFile);
+            sendStep();
+        }
+        bar->setValue(bar->value() + 1);
+    }
+    stepIndex->setValue(tmp);
+    bar->setVisible(false);
 }
 
 StepGui::~StepGui()
