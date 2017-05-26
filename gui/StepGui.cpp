@@ -21,7 +21,8 @@
 #include "TrajectoryModel.hpp"
 
 
-StepGui::StepGui(std::function<void(const Step&)> sendCallback) : sendCallback(sendCallback)
+StepGui::StepGui(std::function<void(const Step&, unsigned short index)> sendCallback, std::function<void(const StepSequence&)> seqCallback)
+    : sendCallback(sendCallback), seqCallback(seqCallback)
 {
     QSplitter* splitter = new QSplitter(Qt::Vertical);
     
@@ -39,6 +40,14 @@ StepGui::StepGui(std::function<void(const Step&)> sendCallback) : sendCallback(s
     
     connect(stepLenBox, SIGNAL(valueChanged(int)), this, SLOT(setStepLength(int)));
     middleLayout->addWidget(stepLenBox);
+
+    QLabel *stepIndexLabel = new QLabel("Step Index",this);
+    middleLayout->addWidget(stepIndexLabel);
+
+    stepIndex = new QSpinBox(this);
+    stepIndex->setMinimum(0);
+    stepIndex->setMaximum(11);
+    middleLayout->addWidget(stepIndex);
     
     QPushButton* sendButton = new QPushButton(this);
     sendButton->setText("Send");
@@ -185,6 +194,20 @@ StepGui::StepGui(std::function<void(const Step&)> sendCallback) : sendCallback(s
     
     setCentralWidget(splitter);
     stepLenBox->setValue(200); //this causes a signal which updates the plots
+
+    // Stepsequence
+    QWidget *stepSequenceWidget = new QWidget(this);
+    QGridLayout* stepSequenceLayout = new QGridLayout(this);
+    stepSequenceWidget->setLayout(stepSequenceLayout);
+    plotTabWidget->addTab(stepSequenceWidget,"Step Sequence Setup");
+
+    QPushButton* stepSequenceSend = new QPushButton("Send sequence",this);
+    connect(stepSequenceSend,SIGNAL(pressed()),this,SLOT(sendSeq()));
+    stepSequenceLayout->addWidget(stepSequenceSend,0,0);
+
+    stepSeqEdit = new QLineEdit(this);
+    stepSequenceLayout->addWidget(stepSeqEdit,0,1);
+    stepSeqEdit->setText("0,0,0,0");
 }
 
 void StepGui::setTrajectorySize(int size)
@@ -254,9 +277,8 @@ void StepGui::setGraphData(QCPGraph* graph, const Trajectory& data)
 
 void StepGui::sendStep()
 {
-    sendCallback(step);
+    sendCallback(step,stepIndex->value());
 }
-
 
 void StepGui::save()
 {
@@ -374,6 +396,21 @@ void StepGui::load()
     
 }
 
+void StepGui::sendSeq()
+{
+    int size = 0;
+    bool ok;
+    foreach(QString s, stepSeqEdit->text().split(",")) {
+        int tmp = s.toInt(&ok,10);
+        if(ok)
+        {
+            seq.sequence[size] = tmp;
+            ++size;
+        }
+    }
+    seq.length = size;
+    seqCallback(seq);
+}
 
 StepGui::~StepGui()
 {
